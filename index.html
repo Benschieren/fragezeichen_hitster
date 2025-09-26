@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Spotify Zufalls-Player</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 50px; }
+    button { padding: 10px 20px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1>🎲 Spotify Zufalls-Player</h1>
+  <button id="login">Login with Spotify</button>
+  <button id="play" style="display:none;">Zufällig abspielen</button>
+
+  <script>
+    // ==== KONFIGURATION ====
+    const CLIENT_ID = "f471160c7450449f95f535590f6427f2"; // aus Spotify Dashboard
+    const REDIRECT_URI = "https://localhost:5500/"; // <--- anpassen (muss im Dashboard stehen!)
+    const ALBUM_ID = "77aawQqgLQZxPb9kwSg0JR"; // Beispiel: Album-ID
+    const SCOPES = "user-modify-playback-state user-read-playback-state";
+
+    // ==== LOGIN FLOW ====
+    const loginBtn = document.getElementById("login");
+    const playBtn = document.getElementById("play");
+
+    function getTokenFromUrl() {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      return params.get("access_token");
+    }
+
+    loginBtn.onclick = () => {
+      const authUrl = `https://accounts.spotify.com/authorize?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(SCOPES)}`;
+      window.location = authUrl;
+    };
+
+    const token = getTokenFromUrl();
+    if (token) {
+      loginBtn.style.display = "none";
+      playBtn.style.display = "inline-block";
+    }
+
+    // ==== ZUFÄLLIG SPIELEN ====
+    async function playRandomTrack() {
+      // 1. Tracks holen
+      const tracksResp = await fetch(`https://api.spotify.com/v1/albums/${ALBUM_ID}/tracks`, {
+        headers: { Authorization: "Bearer " + token }
+      });
+      const tracksData = await tracksResp.json();
+      const tracks = tracksData.items;
+
+      // 2. Zufallstrack wählen
+      const randomTrack = tracks[Math.floor(Math.random() * tracks.length)];
+
+      // Trackdetails holen
+      const detailResp = await fetch(`https://api.spotify.com/v1/tracks/${randomTrack.id}`, {
+        headers: { Authorization: "Bearer " + token }
+      });
+      const details = await detailResp.json();
+      const duration = details.duration_ms;
+
+      // 3. Zufällige Startzeit
+      const startMs = Math.floor(Math.random() * (duration - 60000));
+
+      // 4. Abspielen
+      const resp = await fetch("https://api.spotify.com/v1/me/player/play", {
+        method: "PUT",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          uris: [`spotify:track:${randomTrack.id}`],
+          position_ms: startMs
+        })
+      });
+
+      if (resp.status === 204) {
+        alert(`▶️ Spiele jetzt: ${randomTrack.name} (ab Sekunde ${Math.floor(startMs/1000)})`);
+      } else {
+        const err = await resp.text();
+        alert("Fehler: " + err);
+      }
+    }
+
+    playBtn.onclick = playRandomTrack;
+  </script>
+</body>
+</html>
